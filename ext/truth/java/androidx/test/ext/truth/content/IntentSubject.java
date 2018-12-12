@@ -98,9 +98,5 @@ public final class IntentSubject extends Subject<IntentSubject, Intent> {
     check("getFlags()").that(actualFlags).containsAllIn(expectedFlags);
   }
 
-  public final void filtersEquallyTo(Intent intent) {
-    if (!getSubject().filterEquals(intent)) {
-      fail("is equal for intent filters to", intent);
-    }
-  }
+
 }
