@@ -27,6 +27,7 @@ import androidx.test.espresso.NoActivityResumedException;
 import androidx.test.espresso.NoMatchingRootException;
 import androidx.test.espresso.Root;
 import androidx.test.espresso.UiController;
+import androidx.test.internal.platform.os.ControlledLooper;
 import androidx.test.internal.util.LogUtil;
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitor;
 import androidx.test.runner.lifecycle.Stage;
@@ -35,6 +36,7 @@ import com.google.common.collect.Lists;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.inject.Inject;
@@ -60,17 +62,20 @@ public final class RootViewPicker implements Provider<View> {
   private final ActivityLifecycleMonitor activityLifecycleMonitor;
   private final AtomicReference<Boolean> needsActivity;
   private final RootResultFetcher rootResultFetcher;
+  private final ControlledLooper controlledLooper;
 
   @Inject
   RootViewPicker(
       UiController uiController,
       RootResultFetcher rootResultFetcher,
       ActivityLifecycleMonitor activityLifecycleMonitor,
-      AtomicReference<Boolean> needsActivity) {
+      AtomicReference<Boolean> needsActivity,
+      ControlledLooper controlledLooper) {
     this.uiController = uiController;
     this.rootResultFetcher = rootResultFetcher;
     this.activityLifecycleMonitor = activityLifecycleMonitor;
     this.needsActivity = needsActivity;
+    this.controlledLooper = controlledLooper;
   }
 
   @Override
@@ -97,12 +102,14 @@ public final class RootViewPicker implements Provider<View> {
       if (pickedRoot.isReady()) {
         return pickedRoot;
       } else {
+        controlledLooper.simulateWindowFocus(pickedRoot.getDecorView());
         uiController.loopMainThreadForAtLeast(rootReadyBackoff.getNextBackoffInMillis());
       }
     }
 
     throw new RuntimeException(
         String.format(
+            Locale.ROOT,
             "Waited for the root of the view hierarchy to have "
                 + "window focus and not request layout for 10 seconds. If you specified a non "
                 + "default root matcher, it may be picking a root that never takes focus. "
@@ -339,7 +346,10 @@ public final class RootViewPicker implements Provider<View> {
       long waitTime = getBackoffForAttempt();
       Log.d(
           TAG,
-          String.format("No matching root available - waiting: %sms for one to appear.", waitTime));
+          String.format(
+              Locale.ROOT,
+              "No matching root available - waiting: %sms for one to appear.",
+              waitTime));
       return waitTime;
     }
   }
@@ -355,7 +365,10 @@ public final class RootViewPicker implements Provider<View> {
     @Override
     public long getNextBackoffInMillis() {
       long waitTime = getBackoffForAttempt();
-      Log.d(TAG, String.format("Root not ready - waiting: %sms for one to appear.", waitTime));
+      Log.d(
+          TAG,
+          String.format(
+              Locale.ROOT, "Root not ready - waiting: %sms for one to appear.", waitTime));
       return waitTime;
     }
   }

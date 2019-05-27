@@ -51,6 +51,7 @@ import androidx.test.espresso.util.HumanReadables;
 import com.google.common.base.Predicate;
 import com.google.common.collect.Iterables;
 import java.util.Iterator;
+import java.util.Locale;
 import junit.framework.AssertionFailedError;
 import org.hamcrest.Description;
 import org.hamcrest.Matcher;
@@ -252,7 +253,7 @@ public final class ViewMatchers {
    * @param key to match
    * @param objectMatcher Object to match
    */
-  public static Matcher<View> withTagKey(final int key, final Matcher<Object> objectMatcher) {
+  public static Matcher<View> withTagKey(final int key, final Matcher<?> objectMatcher) {
     return new WithTagKeyMatcher(key, checkNotNull(objectMatcher));
   }
 
@@ -629,7 +630,7 @@ public final class ViewMatchers {
           idDescription = resources.getResourceName(id);
         } catch (Resources.NotFoundException e) {
           // No big deal, will just use the int value.
-          idDescription = String.format("%s (resource name not found)", idDescription);
+          idDescription = String.format(Locale.ROOT, "%s (resource name not found)", idDescription);
         }
       }
       description.appendText("with id: " + idDescription);
@@ -712,10 +713,10 @@ public final class ViewMatchers {
     private final int key;
 
     @RemoteMsgField(order = 1)
-    private final Matcher<Object> objectMatcher;
+    private final Matcher<?> objectMatcher;
 
     @RemoteMsgConstructor
-    private WithTagKeyMatcher(int key, Matcher<Object> objectMatcher) {
+    private WithTagKeyMatcher(int key, Matcher<?> objectMatcher) {
       this.key = key;
       this.objectMatcher = objectMatcher;
     }
@@ -804,7 +805,9 @@ public final class ViewMatchers {
     public void describeTo(Description description) {
       description.appendText(
           String.format(
-              "at least %s percent of the view's area is displayed to the user.", areaPercentage));
+              Locale.ROOT,
+              "at least %s percent of the view's area is displayed to the user.",
+              areaPercentage));
     }
 
     @Override
@@ -849,7 +852,7 @@ public final class ViewMatchers {
       // Get action bar height
       TypedValue tv = new TypedValue();
       int actionBarHeight =
-          (view.getContext().getTheme().resolveAttribute(android.R.attr.actionBarSize, tv, true))
+          view.getContext().getTheme().resolveAttribute(android.R.attr.actionBarSize, tv, true)
               ? TypedValue.complexToDimensionPixelSize(
                   tv.data, view.getContext().getResources().getDisplayMetrics())
               : 0;
@@ -1281,7 +1284,8 @@ public final class ViewMatchers {
 
     @Override
     public void describeTo(Description description) {
-      description.appendText(String.format("view has effective visibility=%s", visibility));
+      description.appendText(
+          String.format(Locale.ROOT, "view has effective visibility=%s", visibility));
     }
 
     @Override

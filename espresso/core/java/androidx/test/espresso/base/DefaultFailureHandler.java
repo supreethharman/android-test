@@ -50,7 +50,9 @@ public final class DefaultFailureHandler implements FailureHandler {
 
   @Override
   public void handle(Throwable error, Matcher<View> viewMatcher) {
-    TestOutputEmitter.takeScreenshot("view-op-error-" + failureCount.incrementAndGet() + ".png");
+    int count = failureCount.incrementAndGet();
+    TestOutputEmitter.takeScreenshot("view-op-error-" + count + ".png");
+    TestOutputEmitter.captureWindowHierarchy("explore-window-hierarchy-" + count + ".xml");
     if (error instanceof EspressoException
         || error instanceof AssertionFailedError
         || error instanceof AssertionError) {
@@ -73,7 +75,7 @@ public final class DefaultFailureHandler implements FailureHandler {
       if (!isAnimationAndTransitionDisabled(appContext)) {
         sb.append(
             "Animations or transitions are enabled on the target device.\n"
-                + "For more info check: http://goo.gl/qVu1yV\n\n");
+                + "For more info check: https://developer.android.com/training/testing/espresso/setup#set-up-environment\n\n");
       }
       sb.append(viewMatcher.toString());
       // Re-throw the exception with the viewMatcher (used to locate the view) as the view

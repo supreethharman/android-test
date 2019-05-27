@@ -195,6 +195,7 @@ public class BaseLayerModule {
   @Singleton
   public ControlledLooper provideControlledLooper() {
     // load a service loaded provided ControlledLooper if available, otherwise return a no-op
-    return ServiceLoaderWrapper.loadSingleService(ControlledLooper.class, () -> () -> {});
+    return ServiceLoaderWrapper.loadSingleService(
+        ControlledLooper.class, () -> ControlledLooper.NO_OP_CONTROLLED_LOOPER);
   }
 }

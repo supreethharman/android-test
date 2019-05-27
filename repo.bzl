@@ -4,79 +4,16 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 # These dependencies are required for *developing* this project.
 def _development_repositories():
-    native.maven_jar(
-        name = "jcommander",
-        artifact = "com.beust:jcommander:1.72",
-    )
-
-    native.maven_jar(
-        name = "junit",
-        artifact = "junit:junit:4.12",
-    )
-
-    native.maven_jar(
-        name = "hamcrest",
-        artifact = "org.hamcrest:hamcrest-all:1.3",
-    )
-
-    native.maven_jar(
-        name = "mockito",
-        artifact = "org.mockito:mockito-core:1.9.5",
-    )
-
-    native.maven_jar(
-        name = "objenesis",
-        artifact = "org.objenesis:objenesis:2.1",
-    )
-
-    native.maven_jar(
-        name = "dexmaker",
-        artifact = "com.google.dexmaker:dexmaker:1.2",
-    )
-
-    native.maven_jar(
-        name = "dexmaker_mockito",
-        artifact = "com.google.dexmaker:dexmaker-mockito:jar:1.2",
-    )
-
-    native.maven_jar(
-        name = "truth",
-        artifact = "com.google.truth:truth:0.42",
-    )
-
-    native.maven_jar(
+    # Needed by @com_google_protobuf//:protobuf_java_util
+    native.bind(
         name = "guava",
-        artifact = "com.google.guava:guava:25.1-android",
+        actual = "@maven//:com_google_guava_guava",
     )
 
-    native.maven_jar(
-        name = "guice",
-        artifact = "com.google.inject:guice:4.1.0",
-    )
-
-    native.maven_jar(
-        name = "guice_multibindings",
-        artifact = "com.google.inject.extensions:guice-multibindings:4.1.0",
-    )
-
-    native.maven_jar(
-        name = "jsr305",
-        artifact = "com.google.code.findbugs:jsr305:3.0.2",
-    )
-
-    native.maven_jar(
-        name = "javax_inject",
-        artifact = "javax.inject:javax.inject:1",
-    )
-
-    native.maven_jar(
-        name = "javax_annotation",
-        artifact = "javax.annotation:javax.annotation-api:1.3.1",
-    )
-
-    native.maven_jar(
-        name = "tagsoup",
-        artifact = "org.ccil/cowan.tagsoup:tagsoup:1.2",
+    # Needed by @com_google_protobuf//:protobuf_java_util
+    native.bind(
+        name = "gson",
+        actual = "@maven//:com_google_code_gson_gson",
     )
 
     http_archive(
@@ -100,21 +37,6 @@ def _development_repositories():
         urls = ["https://github.com/google/protobuf/archive/javalite.zip"],
     )
 
-    native.maven_jar(
-        name = "auto_value_value",
-        artifact = "com.google.auto.value:auto-value:1.5.1",
-    )
-
-    native.maven_jar(
-        name = "kxml",
-        artifact = "net.sf.kxml:kxml2:jar:2.3.0",
-    )
-
-    native.maven_jar(
-        name = "aop_alliance",
-        artifact = "aopalliance:aopalliance:1.0",
-    )
-
     http_archive(
         name = "jsr330",
         build_file_content = """
@@ -124,46 +46,6 @@ java_import(
     jars = ["javax.inject.jar"],
 )""",
         url = "https://github.com/javax-inject/javax-inject/releases/download/1/javax.inject.zip",
-    )
-
-    native.maven_jar(
-        name = "dagger_api",
-        artifact = "com.google.dagger:dagger:2.10",
-    )
-
-    native.maven_jar(
-        name = "dagger_compiler",
-        artifact = "com.google.dagger:dagger-compiler:2.11",
-    )
-
-    native.maven_jar(
-        name = "dagger_producers",
-        artifact = "com.google.dagger:dagger-producers:2.11",
-    )
-
-    native.maven_jar(
-        name = "googlejavaformat",
-        artifact = "com.google.googlejavaformat:google-java-format:1.4",
-    )
-
-    native.maven_jar(
-        name = "errorprone_javac_shaded",
-        artifact = "com.google.errorprone:javac-shaded:9-dev-r4023-3",
-    )
-
-    native.maven_jar(
-        name = "javapoet",
-        artifact = "com.squareup:javapoet:1.9.0",
-    )
-
-    native.maven_jar(
-        name = "jarjar",
-        artifact = "com.googlecode.jarjar:jarjar:1.3",
-    )
-
-    native.maven_jar(
-        name = "accessibility",
-        artifact = "com.google.android.apps.common.testing.accessibility.framework:accessibility-test-framework:2.0",
     )
 
 # These dependencies are for *users* of the Android Test repo,
@@ -258,11 +140,31 @@ def android_test_repositories(with_dev_repositories = False):
     # Needed by protobuf
     native.bind(name = "six", actual = "@six_archive//:six")
 
+    # Protobuf
     http_archive(
         name = "com_google_protobuf",
-        strip_prefix = "protobuf-3.6.1.2",
-        sha256 = "2244b0308846bb22b4ff0bcc675e99290ff9f1115553ae9671eba1030af31bc0",
-        urls = ["https://github.com/protocolbuffers/protobuf/archive/v3.6.1.2.tar.gz"],
+        sha256 = "d82eb0141ad18e98de47ed7ed415daabead6d5d1bef1b8cccb6aa4d108a9008f",
+        strip_prefix = "protobuf-b4f193788c9f0f05d7e0879ea96cd738630e5d51",
+        # Commit from 2019-05-15, update to protobuf 3.8 when available.
+        url = "https://github.com/protocolbuffers/protobuf/archive/b4f193788c9f0f05d7e0879ea96cd738630e5d51.tar.gz",
+    )
+
+    # Protobuf's dependencies
+
+    # Inlined protobuf's deps so we don't need users to add protobuf_deps() to their local WORKSPACE.
+    # From load("@com_google_protobuf//:protobuf_deps.bzl", "protobuf_deps").
+    http_archive(
+        name = "zlib",
+        build_file = "@com_google_protobuf//:third_party/zlib.BUILD",
+        sha256 = "c3e5e9fdd5004dcb542feda5ee4f0ff0744628baf8ed2dd5d66f8ca1197cb1a1",
+        strip_prefix = "zlib-1.2.11",
+        urls = ["https://zlib.net/zlib-1.2.11.tar.gz"],
+    )
+
+    http_archive(
+        name = "bazel_skylib",
+        url = "https://github.com/bazelbuild/bazel-skylib/releases/download/0.8.0/bazel-skylib.0.8.0.tar.gz",
+        sha256 = "2ef429f5d7ce7111263289644d233707dba35e39696377ebab8b0bc701f7818e",
     )
 
     # Open source version of the google python flags library.

@@ -32,6 +32,7 @@ android_local_test(
     name = "ServiceLoaderWrapperTest",
     srcs = ["ServiceLoaderWrapperTest.java"],
     tags = ["robolectric"],
+    manifest = "AndroidManifest_target.xml",
     deps = [
         ":robolectric_config",
         ":service_fixture",
@@ -39,6 +40,6 @@ android_local_test(
         "//ext/junit",
         "//runner/monitor",
         "@robolectric//bazel:robolectric",
-        "@truth//jar",
+        "@maven//:com_google_truth_truth",
     ],
 )

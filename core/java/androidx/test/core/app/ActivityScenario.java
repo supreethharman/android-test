@@ -15,6 +15,7 @@
  */
 package androidx.test.core.app;
 
+import static androidx.test.internal.util.Checks.checkMainThread;
 import static androidx.test.internal.util.Checks.checkNotMainThread;
 import static androidx.test.internal.util.Checks.checkNotNull;
 import static androidx.test.internal.util.Checks.checkState;
@@ -26,11 +27,14 @@ import androidx.lifecycle.Lifecycle.Event;
 import androidx.lifecycle.Lifecycle.State;
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Looper;
 import android.provider.Settings;
 import androidx.annotation.GuardedBy;
 import androidx.annotation.Nullable;
+import android.util.Log;
 import androidx.test.internal.platform.ServiceLoaderWrapper;
 import androidx.test.internal.platform.app.ActivityInvoker;
+import androidx.test.internal.platform.os.ControlledLooper;
 import androidx.test.runner.lifecycle.ActivityLifecycleCallback;
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitor;
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry;
@@ -89,33 +93,28 @@ import java.util.concurrent.locks.ReentrantLock;
  *
  * Before:
  *   ActivityController<MyActivity> controller = Robolectric.buildActivity(MyActivity.class);
- *   controller.create().start().resume();
- *   controller.get();          // Returns resumed activity.
- *   controller.pause().get();  // Returns paused activity.
- *   controller.stop().get();   // Returns stopped activity.
- *   controller.destroy();      // Destroys activity.
+ *   controller.create().start().resume();  // Moves the activity state to State.RESUMED.
+ *   controller.pause();    // Moves the activity state to State.STARTED. (ON_PAUSE is an event).
+ *   controller.stop();     // Moves the activity state to State.CREATED. (ON_STOP is an event).
+ *   controller.destroy();  // Moves the activity state to State.DESTROYED.
  *
  * After:
  *   try(ActivityScenario<MyActivity> scenario = ActivityScenario.launch(MyActivity.class)) {
- *     scenario.onActivity(activity -> {});  // Your activity is resumed.
- *     scenario.moveTo(State.STARTED);
- *     scenario.onActivity(activity -> {});  // Your activity is paused.
- *     scenario.moveTo(State.CREATED);
- *     scenario.onActivity(activity -> {});  // Your activity is stopped.
+ *     scenario.moveToState(State.RESUMED);    // Moves the activity state to State.RESUMED.
+ *     scenario.moveToState(State.STARTED);    // Moves the activity state to State.STARTED.
+ *     scenario.moveToState(State.CREATED);    // Moves the activity state to State.CREATED.
+ *     scenario.moveToState(State.DESTROYED);  // Moves the activity state to State.DESTROYED.
  *   }
  * }</pre>
  */
 public final class ActivityScenario<A extends Activity> implements AutoCloseable, Closeable {
+  private static final String TAG = ActivityScenario.class.getSimpleName();
+
   /**
    * The timeout for {@link #waitForActivityToBecomeAnyOf} method. If an Activity doesn't become
    * requested state after the timeout, we will throw {@link AssertionError} to fail tests.
    */
   private static final long TIMEOUT_MILLISECONDS = 45000;
-
-  /** An ActivityInvoker to use. Implementation class can be configured by service provider. */
-  private static final ActivityInvoker activityInvoker =
-      ServiceLoaderWrapper.loadSingleService(
-          ActivityInvoker.class, () -> new InstrumentationActivityInvoker());
 
   /**
    * A map to lookup steady {@link State} by {@link Stage}. Transient stages such as {@link
@@ -139,12 +138,21 @@ public final class ActivityScenario<A extends Activity> implements AutoCloseable
   /** An intent to start a testing Activity. */
   private final Intent startActivityIntent;
 
+  /** An ActivityInvoker to use. Implementation class can be configured by service provider. */
+  private final ActivityInvoker activityInvoker =
+      ServiceLoaderWrapper.loadSingleService(
+          ActivityInvoker.class, () -> new InstrumentationActivityInvoker());
+
+  private final ControlledLooper controlledLooper =
+      ServiceLoaderWrapper.loadSingleService(
+          ControlledLooper.class, () -> ControlledLooper.NO_OP_CONTROLLED_LOOPER);
+
   /**
    * A current activity stage. This variable is updated by {@link ActivityLifecycleMonitor} from the
    * main thread.
    */
   @GuardedBy("lock")
-  private Stage currentActivityStage;
+  private Stage currentActivityStage = Stage.PRE_ON_CREATE;
 
   /**
    * A current activity. This variable is updated by {@link ActivityLifecycleMonitor} from the main
@@ -156,23 +164,23 @@ public final class ActivityScenario<A extends Activity> implements AutoCloseable
 
   /** Private constructor. Use {@link #launch} to instantiate this class. */
   private ActivityScenario(Intent startActivityIntent) {
-    checkState(
-        Settings.System.getInt(
-                getInstrumentation().getTargetContext().getContentResolver(),
-                Settings.Global.ALWAYS_FINISH_ACTIVITIES,
-                0)
-            == 0,
-        "\"Don't keep activities\" developer options must be disabled for ActivityScenario");
     this.startActivityIntent = checkNotNull(startActivityIntent);
-    currentActivityStage = Stage.PRE_ON_CREATE;
+  }
+
+  /** Private constructor. Use {@link #launch} to instantiate this class. */
+  private ActivityScenario(Class<A> activityClass) {
+    this.startActivityIntent =
+        checkNotNull(activityInvoker.getIntentForActivity(checkNotNull(activityClass)));
   }
 
   /**
    * Launches an activity of a given class and constructs ActivityScenario with the activity. Waits
-   * for the lifecycle state transitions to be complete. If you need to supply parameters to the
-   * start activity intent, use {@link #launch(Intent)}.
+   * for the lifecycle state transitions to be complete. Typically the initial state of the activity
+   * is {@link State#RESUMED} but can be in another state. For instance, if your activity calls
+   * {@link Activity#finish} from your {@link Activity#onCreate}, the state is {@link
+   * State#DESTROYED} when this method returns.
    *
-   * <p>Normally this would be {@link State#RESUMED}, but may be another state.
+   * <p>If you need to supply parameters to the start activity intent, use {@link #launch(Intent)}.
    *
    * <p>This method cannot be called from the main thread except in Robolectric tests.
    *
@@ -181,14 +189,17 @@ public final class ActivityScenario<A extends Activity> implements AutoCloseable
    * @return ActivityScenario which you can use to make further state transitions
    */
   public static <A extends Activity> ActivityScenario<A> launch(Class<A> activityClass) {
-    return launch(activityInvoker.getIntentForActivity(checkNotNull(activityClass)));
+    ActivityScenario<A> scenario = new ActivityScenario<>(checkNotNull(activityClass));
+    scenario.launchInternal();
+    return scenario;
   }
 
   /**
-   * Launches an activity by using a given intent and constructs ActivityScenario with the activity.
-   * Waits for the lifecycle state transitions to be complete.
-   *
-   * <p>Normally this would be {@link State#RESUMED}, but may be another state.
+   * Launches an activity by a given intent and constructs ActivityScenario with the activity. Waits
+   * for the lifecycle state transitions to be complete. Typically the initial state of the activity
+   * is {@link State#RESUMED} but can be in another state. For instance, if your activity calls
+   * {@link Activity#finish} from your {@link Activity#onCreate}, the state is {@link
+   * State#DESTROYED} when this method returns.
    *
    * <p>This method cannot be called from the main thread except in Robolectric tests.
    *
@@ -197,20 +208,34 @@ public final class ActivityScenario<A extends Activity> implements AutoCloseable
    * @return ActivityScenario which you can use to make further state transitions
    */
   public static <A extends Activity> ActivityScenario<A> launch(Intent startActivityIntent) {
+    ActivityScenario<A> scenario = new ActivityScenario<>(checkNotNull(startActivityIntent));
+    scenario.launchInternal();
+    return scenario;
+  }
+
+  /**
+   * An internal helper method to perform initial launch operation for the given scenario instance
+   * along with preconditions checks around device's configuration.
+   */
+  private void launchInternal() {
+    checkState(
+        Settings.System.getInt(
+                getInstrumentation().getTargetContext().getContentResolver(),
+                Settings.Global.ALWAYS_FINISH_ACTIVITIES,
+                0)
+            == 0,
+        "\"Don't keep activities\" developer options must be disabled for ActivityScenario");
+
     checkNotMainThread();
     getInstrumentation().waitForIdleSync();
 
-    ActivityScenario<A> scenario = new ActivityScenario<>(checkNotNull(startActivityIntent));
-    ActivityLifecycleMonitorRegistry.getInstance()
-        .addLifecycleCallback(scenario.activityLifecycleObserver);
+    ActivityLifecycleMonitorRegistry.getInstance().addLifecycleCallback(activityLifecycleObserver);
 
-    activityInvoker.startActivity(scenario.startActivityIntent);
+    activityInvoker.startActivity(startActivityIntent);
 
     // Accept any steady states. An activity may start another activity in its onCreate method. Such
     // an activity goes back to created or started state immediately after it is resumed.
-    scenario.waitForActivityToBecomeAnyOf(STEADY_STATES.values().toArray(new State[0]));
-
-    return scenario;
+    waitForActivityToBecomeAnyOf(STEADY_STATES.values().toArray(new State[0]));
   }
 
   /**
@@ -234,8 +259,8 @@ public final class ActivityScenario<A extends Activity> implements AutoCloseable
    *
    *  Option 2, use ActivityScenarioRule:
    *
-   * }{@literal @Rule}{@code
-   *  ActivityScenarioRule<MyActivity> rule = new ActivityScenarioRule<>(MyActivity.class);
+   * }{@literal @Rule} {@code
+   *  public ActivityScenarioRule<MyActivity> rule = new ActivityScenarioRule<>(MyActivity.class);
    *
    * }{@literal @Test}{@code
    *  public void myTest() {
@@ -277,15 +302,16 @@ public final class ActivityScenario<A extends Activity> implements AutoCloseable
       if (!expectedStateSet.contains(STEADY_STATES.get(currentActivityStage))) {
         throw new AssertionError(
             String.format(
-                "Activity never becomes requested state \"%s\" "
-                    + "(last lifecycle transition = \"%s\")",
+                "Activity never becomes requested state \"%s\" (last lifecycle transition ="
+                    + " \"%s\")",
                 expectedStateSet, currentActivityStage));
       }
     } catch (InterruptedException e) {
       throw new AssertionError(
           String.format(
               "Activity never becomes requested state \"%s\" (last lifecycle transition = \"%s\")",
-              expectedStateSet, currentActivityStage));
+              expectedStateSet, currentActivityStage),
+          e);
     } finally {
       lock.unlock();
     }
@@ -297,6 +323,13 @@ public final class ActivityScenario<A extends Activity> implements AutoCloseable
         @Override
         public void onActivityLifecycleChanged(Activity activity, Stage stage) {
           if (!startActivityIntent.filterEquals(activity.getIntent())) {
+            Log.v(
+                TAG,
+                String.format(
+                    "Activity lifecycle changed event received but ignored because the intent does"
+                        + " not match. startActivityIntent=%s, activity.getIntent()=%s,"
+                        + " activity=%s",
+                    startActivityIntent, activity.getIntent(), activity));
             return;
           }
           lock.lock();
@@ -308,6 +341,13 @@ public final class ActivityScenario<A extends Activity> implements AutoCloseable
                 // transition must be to CREATED. Ignore events with non-created stage, which are
                 // likely come from activities that the previous test starts and doesn't clean up.
                 if (stage != Stage.CREATED) {
+                  Log.v(
+                      TAG,
+                      String.format(
+                          "Activity lifecycle changed event received but ignored because the"
+                              + " reported transition was not ON_CREATE while the last known"
+                              + " transition was %s",
+                          currentActivityStage));
                   return;
                 }
                 break;
@@ -319,6 +359,13 @@ public final class ActivityScenario<A extends Activity> implements AutoCloseable
                 // an activity that is used by the previous test and being destroyed and an activity
                 // that is being resumed.
                 if (currentActivity != activity) {
+                  Log.v(
+                      TAG,
+                      String.format(
+                          "Activity lifecycle changed event received but ignored because the"
+                              + " activity instance does not match. currentActivity=%s,"
+                              + " receivedActivity=%s",
+                          currentActivity, activity));
                   return;
                 }
                 break;
@@ -329,6 +376,12 @@ public final class ActivityScenario<A extends Activity> implements AutoCloseable
             // activity since the system may reuse the instance or want to garbage collect.
             currentActivityStage = stage;
             currentActivity = (A) (stage != Stage.DESTROYED ? activity : null);
+
+            Log.v(
+                TAG,
+                String.format(
+                    "Update currentActivityStage to %s, currentActivity=%s",
+                    currentActivityStage, currentActivity));
 
             stateChangedCondition.signal();
           } finally {
@@ -513,29 +566,35 @@ public final class ActivityScenario<A extends Activity> implements AutoCloseable
    * <p>Note that you should never keep Activity reference passed into your {@code action} because
    * it can be recreated at anytime during state transitions.
    *
-   * <p>Throwing an exception from {@code action} makes the Activity to crash. You can inspect the
-   * exception in logcat outputs.
-   *
-   * <p>This method cannot be called from the main thread except in Robolectric tests.
-   *
    * @throws IllegalStateException if Activity is destroyed, finished or finishing
    */
   public ActivityScenario<A> onActivity(final ActivityAction<A> action) {
-    checkNotMainThread();
-    getInstrumentation().waitForIdleSync();
-    getInstrumentation()
-        .runOnMainSync(
-            () -> {
-              lock.lock();
-              try {
-                checkNotNull(
-                    currentActivity,
-                    "Cannot run onActivity since Activity has been destroyed already");
-                action.perform(currentActivity);
-              } finally {
-                lock.unlock();
-              }
-            });
+    // A runnable to perform given ActivityAction. This runnable should be invoked from the
+    // application main thread.
+    Runnable runnableAction =
+        () -> {
+          checkMainThread();
+
+          lock.lock();
+          try {
+            checkNotNull(
+                currentActivity, "Cannot run onActivity since Activity has been destroyed already");
+            action.perform(currentActivity);
+          } finally {
+            lock.unlock();
+          }
+        };
+
+    if (Looper.myLooper() == Looper.getMainLooper()) {
+      // execute any queued work on main looper, to make behavior consistent between running
+      // on Robolectric with paused main looper and instrumentation
+      controlledLooper.drainMainThreadUntilIdle();
+      runnableAction.run();
+    } else {
+      getInstrumentation().waitForIdleSync();
+      getInstrumentation().runOnMainSync(runnableAction);
+    }
+
     return this;
   }
 
@@ -557,5 +616,17 @@ public final class ActivityScenario<A extends Activity> implements AutoCloseable
    */
   public ActivityResult getResult() {
     return activityInvoker.getActivityResult();
+  }
+
+  /**
+   * Returns the current activity state. The possible states are {@link State#CREATED}, {@link
+   * State#STARTED}, {@link State#RESUMED}, and {@link State#DESTROYED}.
+   *
+   * <p>This method cannot be called from the main thread except in Robolectric tests.
+   */
+  public State getState() {
+    return checkNotNull(
+        getCurrentActivityState().state,
+        "Could not get current state due to the transition is incomplete.");
   }
 }

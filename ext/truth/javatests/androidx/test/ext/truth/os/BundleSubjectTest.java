@@ -20,8 +20,8 @@ import static androidx.test.ext.truth.os.BundleSubject.assertThat;
 import android.accounts.Account;
 import android.content.Intent;
 import android.os.Bundle;
+import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.ext.truth.content.IntentSubject;
-import androidx.test.runner.AndroidJUnit4;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -63,6 +63,13 @@ public class BundleSubjectTest {
     Bundle bundle = new Bundle();
     bundle.putInt("foo", 1);
     assertThat(bundle).integer("foo").isEqualTo(1);
+  }
+
+  @Test
+  public void longInt() {
+    Bundle bundle = new Bundle();
+    bundle.putLong("foo", 1000000000000L);
+    assertThat(bundle).longInt("foo").isEqualTo(1000000000000L);
   }
 
   @Test

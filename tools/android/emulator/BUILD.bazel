@@ -63,6 +63,9 @@ filegroup(
         "support/adb.turbo",
         "support/cache.img.tar.gz",
         "support/default_sdcard.256.img.tar.gz",
+        "support/waterfall/forward_bin",
+        "support/waterfall/ports_bin",
+        "support/waterfall/waterfall_bin",
     ],
 )
 

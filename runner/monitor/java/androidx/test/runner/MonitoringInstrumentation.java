@@ -52,6 +52,7 @@ import androidx.test.runner.lifecycle.ApplicationLifecycleMonitorRegistry;
 import androidx.test.runner.lifecycle.ApplicationStage;
 import androidx.test.runner.lifecycle.Stage;
 import java.io.File;
+import java.lang.Thread.UncaughtExceptionHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -132,6 +133,7 @@ public class MonitoringInstrumentation extends ExposedInstrumentationApi {
 
   private volatile boolean finished = false;
   private volatile InterceptingActivityFactory interceptingActivityFactory;
+  private UncaughtExceptionHandler standardHandler;
 
   /**
    * Sets up lifecycle monitoring, and argument registry.
@@ -248,18 +250,19 @@ public class MonitoringInstrumentation extends ExposedInstrumentationApi {
     // frameworks/base/core/java/android/app/LoadedApk.java
     ClassLoader newClassLoader = getTargetContext().getClassLoader();
 
-    Log.i(
-        TAG,
-        String.format(
-            "Setting context classloader to '%s', Original: '%s'",
-            newClassLoader.toString(), originalClassLoader.toString()));
-    Thread.currentThread().setContextClassLoader(newClassLoader);
+    if (originalClassLoader != newClassLoader) {
+      Log.i(
+          TAG,
+          String.format(
+              "Setting context classloader to '%s', Original: '%s'",
+              newClassLoader, originalClassLoader));
+      Thread.currentThread().setContextClassLoader(newClassLoader);
+    }
     isDexmakerClassLoaderInitialized.set(Boolean.TRUE);
   }
 
   private void logUncaughtExceptions() {
-    final Thread.UncaughtExceptionHandler standardHandler =
-        Thread.currentThread().getUncaughtExceptionHandler();
+    standardHandler = Thread.currentThread().getUncaughtExceptionHandler();
     Thread.currentThread()
         .setUncaughtExceptionHandler(
             new Thread.UncaughtExceptionHandler() {
@@ -288,6 +291,10 @@ public class MonitoringInstrumentation extends ExposedInstrumentationApi {
                 }
               }
             });
+  }
+
+  protected void restoreUncaughtExceptionHandler() {
+    Thread.currentThread().setUncaughtExceptionHandler(standardHandler);
   }
 
   /**
@@ -355,6 +362,7 @@ public class MonitoringInstrumentation extends ExposedInstrumentationApi {
     long endTime = System.currentTimeMillis();
     Log.i(TAG, String.format("waitForActivitiesToComplete() took: %sms", endTime - startTime));
     ActivityLifecycleMonitorRegistry.registerInstance(null);
+    restoreUncaughtExceptionHandler();
     super.finish(resultCode, results);
   }
 
@@ -412,6 +420,28 @@ public class MonitoringInstrumentation extends ExposedInstrumentationApi {
     applicationMonitor.signalLifecycleChange(app, ApplicationStage.PRE_ON_CREATE);
     super.callApplicationOnCreate(app);
     applicationMonitor.signalLifecycleChange(app, ApplicationStage.CREATED);
+  }
+
+  /**
+   * Posts a runnable to the main thread and blocks the caller's thread until the runnable is
+   * executed. When an exception is thrown in the runnable, the exception is propagated back to the
+   * caller's thread and it will be rethrown as {@link RuntimeException}.
+   *
+   * @param runnable a runnable to be executed on the main thread
+   */
+  @Override
+  public void runOnMainSync(Runnable runnable) {
+    FutureTask<Void> wrapped = new FutureTask<>(runnable, null);
+    super.runOnMainSync(wrapped);
+    try {
+      wrapped.get();
+    } catch (InterruptedException e) {
+      Log.e(TAG, "An execution is interrupted", e);
+      throw new RuntimeException(e);
+    } catch (ExecutionException e) {
+      Log.e(TAG, "An exception is thrown from the runnable posted to the main thread", e);
+      throw new RuntimeException(e.getCause());
+    }
   }
 
   @Override

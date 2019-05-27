@@ -24,7 +24,8 @@ import com.google.common.truth.Subject;
 import com.google.common.truth.Truth;
 
 /** Testing subject for {@link Parcelable}s. */
-final class ParcelableSubject<T extends Parcelable> extends Subject<ParcelableSubject<T>, T> {
+public final class ParcelableSubject<T extends Parcelable>
+    extends Subject<ParcelableSubject<T>, T> {
 
   public static <T extends Parcelable> ParcelableSubject<T> assertThat(T parcelable) {
     return Truth.assertAbout(ParcelableSubject.<T>parcelables()).that(parcelable);
@@ -34,12 +35,15 @@ final class ParcelableSubject<T extends Parcelable> extends Subject<ParcelableSu
     return ParcelableSubject<T>::new;
   }
 
+  private final T actual;
+
   ParcelableSubject(FailureMetadata failureMetadata, T subject) {
     super(failureMetadata, subject);
+    this.actual = subject;
   }
 
   public void recreatesEqual(Creator<T> creator) {
-    T recreated = forceParcel(actual(), creator);
-    check("recreatesEqual()").that(actual()).isEqualTo(recreated);
+    T recreated = forceParcel(actual, creator);
+    check("recreatesEqual()").that(actual).isEqualTo(recreated);
   }
 }

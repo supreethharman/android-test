@@ -120,8 +120,9 @@ class UnifiedLauncherTest(mox.MoxTestBase):
         sim_access_rules_file=None,
         phone_number=None,
         source_properties=None,
-        use_h2o=False,
-        forward_bin=None)
+        use_waterfall=False,
+        forward_bin=None,
+        ports_bin=None)
 
     self.mox.StubOutWithMock(unified_launcher, '_RestartDevice')
     unified_launcher._RestartDevice(mock_device,
@@ -194,8 +195,9 @@ class UnifiedLauncherTest(mox.MoxTestBase):
         sim_access_rules_file=None,
         phone_number=None,
         source_properties=None,
-        use_h2o=False,
-        forward_bin=None)
+        use_waterfall=False,
+        forward_bin=None,
+        ports_bin=None)
 
     self.mox.StubOutWithMock(unified_launcher, '_RestartDevice')
     unified_launcher._RestartDevice(mock_device,
@@ -264,8 +266,9 @@ class UnifiedLauncherTest(mox.MoxTestBase):
         sim_access_rules_file=None,
         phone_number=None,
         source_properties=None,
-        use_h2o=False,
-        forward_bin=None)
+        use_waterfall=False,
+        forward_bin=None,
+        ports_bin=None)
 
     self.mox.StubOutWithMock(unified_launcher, '_RestartDevice')
     unified_launcher._RestartDevice(mock_device, enable_display=True,
@@ -340,8 +343,9 @@ class UnifiedLauncherTest(mox.MoxTestBase):
         sim_access_rules_file=None,
         phone_number=None,
         source_properties=None,
-        use_h2o=False,
-        forward_bin=None)
+        use_waterfall=False,
+        forward_bin=None,
+        ports_bin=None)
 
     self.mox.StubOutWithMock(unified_launcher, '_RestartDevice')
     unified_launcher._RestartDevice(mock_device, enable_display=True,
@@ -501,8 +505,9 @@ class UnifiedLauncherTest(mox.MoxTestBase):
         enable_single_step=False,
         source_properties=None,
         mini_boot=False,
-        use_h2o=False,
-        forward_bin=None)
+        use_waterfall=False,
+        forward_bin=None,
+        ports_bin=None)
     self.mox.StubOutWithMock(initial_boot_device, 'Configure')
     self.mox.StubOutWithMock(initial_boot_device, 'StartDevice')
     skin = 'rabbit_fur'
@@ -569,8 +574,9 @@ class UnifiedLauncherTest(mox.MoxTestBase):
         enable_single_step=False,
         source_properties=None,
         mini_boot=False,
-        use_h2o=False,
-        forward_bin=None)
+        use_waterfall=False,
+        forward_bin=None,
+        ports_bin=None)
     self.mox.StubOutWithMock(initial_boot_device, 'Configure')
     self.mox.StubOutWithMock(initial_boot_device, 'StartDevice')
     skin = 'rabbit_fur'

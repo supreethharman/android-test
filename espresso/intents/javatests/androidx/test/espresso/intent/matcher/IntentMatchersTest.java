@@ -18,10 +18,12 @@ package androidx.test.espresso.intent;
 
 import static androidx.test.core.app.ApplicationProvider.getApplicationContext;
 import static androidx.test.espresso.intent.matcher.BundleMatchers.hasEntry;
+import static androidx.test.espresso.intent.matcher.IntentMatchers.filterEquals;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasAction;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasCategories;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasComponent;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasData;
+import static androidx.test.espresso.intent.matcher.IntentMatchers.hasDataString;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasExtra;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasExtraWithKey;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasExtras;
@@ -297,6 +299,7 @@ public class IntentMatchersTest {
     assertTrue(hasData(uri.toString()).matches(intent));
     assertTrue(hasData(uri).matches(intent));
     assertTrue(hasData(equalTo(uri)).matches(intent));
+    assertTrue(hasDataString(equalTo(uri.toString())).matches(intent));
   }
 
   @Test
@@ -311,6 +314,8 @@ public class IntentMatchersTest {
     assertFalse(hasData(Uri.parse("https://www.google.com/search?q=NotMatcher")).matches(intent));
     assertFalse(
         hasData(equalTo(Uri.parse("https://www.google.com/search?q=NotMatcher"))).matches(intent));
+    assertFalse(
+        hasDataString(equalTo("https://www.google.com/search?q=NotMatcher")).matches(intent));
   }
 
   @Test
@@ -448,6 +453,39 @@ public class IntentMatchersTest {
     intent.addFlags(Intent.FLAG_DEBUG_LOG_RESOLUTION | 8);
     assertFalse((hasFlags(16)).matches(intent));
     assertFalse((hasFlags(Intent.FLAG_ACTIVITY_NO_HISTORY | 8)).matches(intent));
+  }
+
+  @Test
+  public void filterEqualsMatches() {
+    Intent intent =
+        new Intent("foo.action", uri)
+            .setType("text")
+            .setClassName("com.foo.bar", "com.foo.bar.Baz")
+            .addCategory("category");
+    Intent intentWithFlagsAndExtras =
+        new Intent(intent).addFlags(Intent.FLAG_DEBUG_LOG_RESOLUTION).putExtra("foo", "bar");
+    assertTrue(filterEquals(intent).matches(intentWithFlagsAndExtras));
+  }
+
+  @Test
+  public void filterEqualsDoesNotMatch() {
+    Intent intent =
+        new Intent("foo.action", uri)
+            .setClassName("com.foo.bar", "com.foo.bar.Baz")
+            .addFlags(Intent.FLAG_DEBUG_LOG_RESOLUTION)
+            .setType("text");
+    Intent intentWithDifferentAction = new Intent(intent).setAction("bar.action");
+    assertFalse(filterEquals(intent).matches(intentWithDifferentAction));
+    Intent intentWithDifferentData =
+        new Intent(intent).setData(Uri.parse("https://www.google.com/search?q=NotMatcher"));
+    assertFalse(filterEquals(intent).matches(intentWithDifferentData));
+    Intent intentWithDifferentType = new Intent(intent).setType("img");
+    assertFalse(filterEquals(intent).matches(intentWithDifferentType));
+    Intent intentWithDifferentComponent =
+        new Intent(intent).setClassName("com.foo.bar", "com.foo.bar.Other");
+    assertFalse(filterEquals(intent).matches(intentWithDifferentComponent));
+    Intent intentWithDifferentCategories = new Intent(intent).addCategory("category");
+    assertFalse(filterEquals(intent).matches(intentWithDifferentCategories));
   }
 
   @Test

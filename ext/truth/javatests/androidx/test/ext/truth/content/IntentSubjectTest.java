@@ -15,13 +15,15 @@
  */
 package androidx.test.ext.truth.content;
 
-import static androidx.test.InstrumentationRegistry.getTargetContext;
+import static androidx.test.core.app.ApplicationProvider.getApplicationContext;
 import static androidx.test.ext.truth.content.IntentSubject.assertThat;
+import static com.google.common.truth.ExpectFailure.assertThat;
 import static org.junit.Assert.fail;
 
+import android.content.ComponentName;
 import android.content.Intent;
 import android.net.Uri;
-import androidx.test.runner.AndroidJUnit4;
+import androidx.test.ext.junit.runners.AndroidJUnit4;
 import com.google.common.truth.Truth;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -66,7 +68,7 @@ public class IntentSubjectTest {
   @Test
   public void hasComponentClass() {
     Intent intent = new Intent();
-    intent.setClassName(getTargetContext(), "Foo");
+    intent.setClassName(getApplicationContext(), "Foo");
     assertThat(intent).hasComponentClass("Foo");
   }
 
@@ -75,6 +77,14 @@ public class IntentSubjectTest {
     Intent intent = new Intent();
     intent.setClassName("com.foo", "Foo");
     assertThat(intent).hasComponentPackage("com.foo");
+  }
+
+  @Test
+  public void hasComponent() {
+    Intent intent = new Intent();
+    intent.setClassName("com.foo", "Foo");
+    assertThat(intent).hasComponent("com.foo", "Foo");
+    assertThat(intent).hasComponent(new ComponentName("com.foo", "Foo"));
   }
 
   @Test
@@ -130,10 +140,10 @@ public class IntentSubjectTest {
       assertThat(new Intent("FOO")).filtersEquallyTo(new Intent("BAR"));
       fail("Should have thrown");
     } catch (AssertionError e) {
-      Truth.assertThat(e.getMessage())
-          .isEqualTo(
-              "Not true that <Intent { act=FOO }> "
-                  + "is equal for intent filters to <Intent { act=BAR }>");
+      assertThat(e)
+          .factValue("expected to be equal for intent filters to")
+          .isEqualTo("Intent { act=BAR }");
+      assertThat(e).factValue("but was").isEqualTo("Intent { act=FOO }");
     }
   }
 }

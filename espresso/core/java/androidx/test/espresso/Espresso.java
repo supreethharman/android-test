@@ -29,19 +29,26 @@ import static org.hamcrest.Matchers.endsWith;
 
 import android.content.Context;
 import android.os.Build;
+import android.os.Build.VERSION;
+import android.os.Build.VERSION_CODES;
 import android.os.Looper;
 import androidx.annotation.CheckResult;
+import android.util.Log;
+import android.view.Choreographer;
 import android.view.View;
 import android.view.ViewConfiguration;
 import androidx.test.espresso.action.ViewActions;
 import androidx.test.espresso.base.IdlingResourceRegistry;
 import androidx.test.espresso.util.TreeIterables;
+import androidx.test.platform.app.InstrumentationRegistry;
 import com.google.common.util.concurrent.ListenableFutureTask;
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
 import javax.annotation.CheckReturnValue;
 import org.hamcrest.Matcher;
 
@@ -51,8 +58,10 @@ import org.hamcrest.Matcher;
  */
 public final class Espresso {
 
+  private static final String TAG = Espresso.class.getSimpleName();
   private static final BaseLayerComponent BASE = GraphHolder.baseLayer();
   private static final IdlingResourceRegistry baseRegistry = BASE.idlingResourceRegistry();
+  private static final int TIMEOUT_SECONDS = 5;
 
   private Espresso() {}
 
@@ -239,6 +248,12 @@ public final class Espresso {
    */
   @SuppressWarnings("unchecked")
   public static void openActionBarOverflowOrOptionsMenu(Context context) {
+    // We need to wait for Activity#onPrepareOptionsMenu to be called before trying to open
+    // overflow or it's missing. onPrepareOptionsMenu is called by Choreographer after onResume and
+    // view is attached to window. To ensure the options menu is created before we try to open,
+    // wait for all processing tasks in this frame to be finished.
+    waitUntilNextFrame(2);
+
     if (context.getApplicationInfo().targetSdkVersion < Build.VERSION_CODES.HONEYCOMB) {
       // regardless of the os level of the device, this app will be rendering a menukey
       // in the virtual navigation bar (if present) or responding to hardware option keys on
@@ -254,6 +269,38 @@ public final class Espresso {
     } else {
       // either a hardware button exists, or we're on a pre-HC os.
       onView(isRoot()).perform(pressMenuKey());
+    }
+
+    // Again, we need to wait for the next rendering frame so that overflow menu is rendered on
+    // screen. This wait is especially important for API 29+ devices. If we skip this wait and you
+    // try clicking on overflow menu, the click may delivered to unexpected view which is positioned
+    // the same location but under the overflow menu. This happens because the context menu is
+    // there in view hierarchy but not rendered yet so Espresso is able to calculate coordinate but
+    // injected motion event goes to the wrong view. Waits for two frames because runnable to
+    // display the menu is registered in the current frame and it is executed in the next frame.
+    waitUntilNextFrame(2);
+  }
+
+  private static void waitUntilNextFrame(int times) {
+    // Choreographer API is added in API 16.
+    if (VERSION.SDK_INT < VERSION_CODES.JELLY_BEAN) {
+      return;
+    }
+
+    for (int i = 0; i < times; ++i) {
+      CountDownLatch latch = new CountDownLatch(1);
+      InstrumentationRegistry.getInstrumentation()
+          .runOnMainSync(
+              () ->
+                  Choreographer.getInstance()
+                      .postFrameCallback(frameTimeNanos -> latch.countDown()));
+      BASE.controlledLooper().drainMainThreadUntilIdle();
+      try {
+        latch.await(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        Log.w(TAG, "Waited for the next frame to start but never happened.");
+        return;
+      }
     }
   }
 
